@@ -1,0 +1,162 @@
+#!/usr/bin/env sh
+
+if ! command -v pw-metadata &> /dev/null
+then
+  echo "Error: pipewire is not installed. Please install pipewire to use this script."
+  exit 1
+fi
+
+get_current_rate() {
+  current_rate=$(pw-metadata -n settings | grep 'clock.force-rate' | cut -d "'" -f 4)
+
+  if [ "$current_rate" = "0" ]; then
+    current_rate=$(pw-metadata -n settings | grep 'clock.rate' | cut -d "'" -f 4)
+    echo "Current sample rate: ${current_rate} (default)"
+  else
+    echo "Current sample rate: ${current_rate}"
+  fi
+}
+
+echo "-------------------------------------------"
+get_current_rate
+
+show_settings() {
+  echo "-------------------------------------------"
+  get_current_rate
+  echo "-------------------------------------------"
+  echo "Current PipeWire Settings:"
+  pw-metadata -n settings |
+    grep -E 'clock\.(rate|force-rate|allowed-rates|quantum)' |
+    sed 's/ *= */: /' |
+    sed 's/^ *//' |
+    cut -d ' ' -f 3- |
+    sed 's/ type.*$//'
+}
+
+options_prompt() {
+    echo "-------------------------------------------"
+    echo "Options:"
+    echo "1. Back to main menu"
+    echo "2. Show current settings"
+    echo "3. Exit"
+    echo ""
+    read -p "Choose an option: " custom_option
+    case $custom_option in
+      1)
+        echo "-------------------------------------------"
+        get_current_rate
+        return 0
+        ;;
+      2)
+        show_settings
+        exit 1
+        ;;
+      3)
+        exit 0
+        ;;
+      *)
+        echo "Invalid option"
+        return 1
+        ;;
+    esac
+}
+while true; do
+  echo "-------------------------------------------"
+  echo "Options:"
+  echo "1. Set custom sample rate"
+  echo "2. Set sample rate to 44.1khz"
+  echo "3. Set sample rate to 48khz"
+  echo "4. Set sample rate to 96khz"
+  echo "5. Set sample rate to 192khz"
+  echo "6. Set sample rate to 384khz"
+  echo "7. Reset sample rate to default"
+  echo "8. Show current settings"
+  echo "9. Show current PipeWire processes"
+  echo ""
+  read -p "Choose an option: " option
+
+  case $option in
+    1)
+      echo "-------------------------------------------"
+      read -p "Enter custom sample rate in khz: " custom_rate_khz
+      custom_rate=$(echo "$custom_rate_khz * 1000" | bc)
+      pw-metadata -n settings 0 clock.force-rate $custom_rate
+      echo "Sample rate set to: ${custom_rate_khz}khz"
+      while true; do
+        if options_prompt; then
+          break
+        fi
+      done
+      ;;
+    2)
+      echo "-------------------------------------------"
+      pw-metadata -n settings 0 clock.force-rate 44100 > /dev/null 2>&1
+      echo "Sample rate set to 44.1khz"
+      while true; do
+        if options_prompt; then
+          break
+        fi
+      done
+      ;;
+    3)
+      echo "-------------------------------------------"
+      pw-metadata -n settings 0 clock.force-rate 48000 > /dev/null 2>&1
+      echo "Sample rate set to 48khz"
+        while true; do
+        if options_prompt; then
+          break
+        fi
+      done
+      ;;
+    4)
+      echo "-------------------------------------------"
+      pw-metadata -n settings 0 clock.force-rate 96000 > /dev/null 2>&1
+      echo "Sample rate set to 96khz"
+      while true; do
+        if options_prompt; then
+          break
+        fi
+      done
+      ;;
+    5)
+      echo "-------------------------------------------"
+          pw-metadata -n settings 0 clock.force-rate 192000 > /dev/null 2>&1
+      echo "Sample rate set to 192khz"
+      while true; do
+        if options_prompt; then
+          break
+        fi
+      done
+      ;;
+    6)
+      echo "-------------------------------------------"
+      pw-metadata -n settings 0 clock.force-rate 384000 > /dev/null 2>&1
+      echo "Sample rate set to 384khz"
+      while true; do
+        if options_prompt; then
+          break
+        fi
+      done
+      ;;
+    7)
+      echo "-------------------------------------------"
+      pw-metadata -n settings 0 clock.force-rate 0 > /dev/null 2>&1
+      echo "Sample rate reset to default"
+      while true; do
+        if options_prompt; then
+          break
+        fi
+      done
+      ;;
+    8)
+      show_settings
+      ;;
+    9)
+      pw-top
+      ;;
+    *)
+      echo "Invalid option"
+      exit 1
+      ;;
+  esac
+done
