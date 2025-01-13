@@ -46,3 +46,7 @@ The script interacts with PipeWire using the `pw-metadata` command to get and se
 * **PipeWire not installed:** Ensure PipeWire is installed on your system.
 * **Permission errors:** You may need administrator privileges to run the script, especially when setting the sample rate.  Try running with `sudo`.
 * **Unexpected output:** If the script produces unexpected output, try running `pw-metadata -n settings` directly from the command line to see the raw PipeWire settings. This can help you diagnose issues.
+
+## License
+
+See the `LICENSE` file for details.
