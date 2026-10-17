@@ -6,7 +6,16 @@ then
   exit 1
 fi
 
+clear_screen() {
+  if command -v tput > /dev/null 2>&1 && tput clear > /dev/null 2>&1; then
+    tput clear
+  else
+    printf '\033[2J\033[H'
+  fi
+}
+
 get_current_rate() {
+  echo "-------------------------------------------"
   current_rate=$(pw-metadata -n settings | grep 'clock.force-rate' | cut -d "'" -f 4)
 
   if [ "$current_rate" = "0" ]; then
@@ -15,23 +24,24 @@ get_current_rate() {
   else
     echo "Current sample rate: ${current_rate}"
   fi
-}
 
-echo "-------------------------------------------"
-get_current_rate
-
-show_settings() {
-  echo "-------------------------------------------"
-  get_current_rate
   echo "-------------------------------------------"
   echo "Current PipeWire Settings:"
+
   pw-metadata -n settings |
-    grep -E 'clock\.(rate|force-rate|allowed-rates|quantum)' |
-    sed 's/ *= */: /' |
-    sed 's/^ *//' |
-    cut -d ' ' -f 3- |
-    sed 's/ type.*$//'
+    grep -E "key:'clock\.(rate|force-rate|allowed-rates|quantum)'" |
+    awk -F"'" '{
+      key = $2
+      val = $4
+      if (key == "clock.force-rate" && val == "0")
+        next
+      if (key == "clock.force-rate")
+        val = val " (current)"
+      printf "  %-19s: %s\n", key, val
+    }'
 }
+
+get_current_rate
 
 options_prompt() {
     echo "-------------------------------------------"
@@ -40,16 +50,17 @@ options_prompt() {
     echo "2. Show current settings"
     echo "3. Exit"
     echo ""
-    read -p "Choose an option: " custom_option
+    read -p "Choose an option: " custom_option || exit 0
     case $custom_option in
       1)
+        clear_screen
         echo "-------------------------------------------"
         get_current_rate
         return 0
         ;;
       2)
-        show_settings
-        exit 1
+        clear_screen
+        get_current_rate
         ;;
       3)
         exit 0
@@ -71,16 +82,18 @@ while true; do
   echo "6. Set sample rate to 384khz"
   echo "7. Reset sample rate to default"
   echo "8. Show current settings"
-  echo "9. Show current PipeWire processes"
+  echo "9. Show pactl info"
+  echo "10. Show current PipeWire processes"
   echo ""
-  read -p "Choose an option: " option
+  read -p "Choose an option: " option || exit 0
+  clear_screen
 
   case $option in
     1)
       echo "-------------------------------------------"
-      read -p "Enter custom sample rate in khz: " custom_rate_khz
+      read -p "Enter custom sample rate in khz: " custom_rate_khz || exit 0
       custom_rate=$(echo "$custom_rate_khz * 1000" | bc)
-      pw-metadata -n settings 0 clock.force-rate $custom_rate
+      pw-metadata -n settings 0 clock.force-rate "$custom_rate" > /dev/null 2>&1
       echo "Sample rate set to: ${custom_rate_khz}khz"
       while true; do
         if options_prompt; then
@@ -149,9 +162,16 @@ while true; do
       done
       ;;
     8)
-      show_settings
+      get_current_rate
       ;;
     9)
+      echo "-------------------------------------------"
+      echo "PulseAudio Server Info"
+      echo "-------------------------------------------"
+      pactl info
+      pactl stat
+      ;;
+    10)
       pw-top
       ;;
     *)

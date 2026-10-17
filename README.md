@@ -10,13 +10,43 @@ This script provides a simple command-line interface to manage the sample rate o
 
 ## Installation
 
-1. Save the script above as `pwrate`.
-2. Make the script executable: `chmod +x pwrate`
-3. Optionally save the script to a directory in your system's `$PATH` for easy access.
+1. Clone the repository and go into it:
+```sh
+git clone https://github.com/AbrarAbe/pwrate.git
+cd pwrate
+```
+
+2. Make the script executable (if it's not):
+```sh
+chmod +x pwrate
+```
+
+3. Link it into your `$PATH` so you can run it from anywhere:
+```sh
+sudo ln -s "$PWD/pwrate" /usr/local/bin/pwrate
+```
+
+4. Install the required PipeWire config:
+```sh
+mkdir -p ~/.config/pipewire/pipewire.conf.d
+cp .config/pipewire/pipewire.conf.d/*.conf ~/.config/pipewire/pipewire.conf.d/
+```
+
+5. *Optional:* for a system-wide config, copy to `/etc/pipewire/pipewire.conf.d/` instead (requires root):
+```sh
+sudo cp .config/pipewire/pipewire.conf.d/*.conf /etc/pipewire/pipewire.conf.d/
+```
+
+6. Restart PipeWire :
+```sh
+systemctl --user restart pipewire
+```
+
+Forced rates (what this script sets) bypass `clock.allowed-rates`, so the script works either way. The config fixes the *default* behavior: when no rate is forced, PipeWire picks the rate dynamically from `clock.allowed-rates`, and audio at rates missing from that list gets resampled to an allowed one. You can confirm the current settings with menu option 8 (Show current settings). To change the allowed rates later, edit the installed `.conf` file and restart PipeWire.
 
 ## Usage
 
-Run the script from your terminal: `./pwrate`
+Run the script from your terminal: `pwrate`
 
 The script will present a menu with the following options:
 
@@ -28,8 +58,8 @@ The script will present a menu with the following options:
 6. **Set sample rate to 384kHz:** Sets the sample rate to 384 kHz.
 7. **Reset sample rate to default:** Resets the sample rate to PipeWire's default setting.
 8. **Show current settings:** Displays the current PipeWire clock settings, including the sample rate.
-9. **Show current PipeWire processes:** Displays the current PipeWire processes (`pw-top` output).
-
+9. **Show pactl info:** Displays PulseAudio/PipeWire server information (`pactl info` and `pactl stat`).
+10. **Show current PipeWire processes:** Displays the current PipeWire processes (`pw-top` output).
 
 After making a selection, the script will display the current sample rate and provide an options menu with the following:
 
@@ -39,13 +69,14 @@ After making a selection, the script will display the current sample rate and pr
 
 ## How it Works
 
-The script interacts with PipeWire using the `pw-metadata` command to get and set the `clock.force-rate` setting. If `clock.force-rate` is 0, it defaults to using the `clock.rate` setting to display the current rate. Error handling is included to gracefully handle situations where Pipewire is not installed or if the sample rate cannot be determined.
+The script interacts with PipeWire using the `pw-metadata` command to get and set the `clock.force-rate` setting. If `clock.force-rate` is 0, it defaults to using the `clock.rate` setting to display the current rate. A forced rate applies immediately and bypasses `clock.allowed-rates`; the allowed list only governs rate selection when nothing is forced. Error handling is included to gracefully handle situations where Pipewire is not installed or if the sample rate cannot be determined.
 
 ## Troubleshooting
 
 * **PipeWire not installed:** Ensure PipeWire is installed on your system.
 * **Permission errors:** You may need administrator privileges to run the script, especially when setting the sample rate.  Try running with `sudo`.
 * **Unexpected output:** If the script produces unexpected output, try running `pw-metadata -n settings` directly from the command line to see the raw PipeWire settings. This can help you diagnose issues.
+* **Wrong rate when nothing is forced:** with `clock.force-rate` at 0 (after a reset or reboot), PipeWire picks the rate from `clock.allowed-rates`, and rates missing from that list are resampled. Fix the list — see [Installation](#installation).
 
 ## License
 
