@@ -1,182 +1,144 @@
 #!/usr/bin/env sh
 
-if ! command -v pw-metadata &> /dev/null
-then
-  echo "Error: pipewire is not installed. Please install pipewire to use this script."
-  exit 1
+# pwrate - PipeWire sample rate manager
+# Requires: pipewire, gum (https://github.com/charmbracelet/gum)
+
+if ! command -v pw-metadata >/dev/null 2>&1; then
+    echo "Error: pipewire is not installed. Please install pipewire to use this script."
+    exit 1
+fi
+
+if ! command -v gum >/dev/null 2>&1; then
+    echo "Error: gum is not installed. Install it from https://github.com/charmbracelet/gum"
+    exit 1
 fi
 
 clear_screen() {
-  if command -v tput > /dev/null 2>&1 && tput clear > /dev/null 2>&1; then
-    tput clear
-  else
-    printf '\033[2J\033[H'
-  fi
+    if command -v tput >/dev/null 2>&1 && tput clear >/dev/null 2>&1; then
+        tput clear
+    else
+        printf '\033[2J\033[H'
+    fi
+}
+
+header() {
+    # "--" is required: gum (kong) otherwise parses leading-dash text like
+    # separator lines as unknown flags.
+    gum style --bold --foreground 212 -- "$1"
+    gum style --foreground 240 -- "-------------------------------------------"
+}
+
+khz_to_hz() {
+    # Convert kHz to Hz with shell arithmetic (no bc). Accepts "48" and "44.1".
+    case $1 in
+    *.*)
+        int_part=${1%%.*}
+        frac_part=${1#*.}
+        case ${#frac_part} in
+        1) frac_part="${frac_part}00" ;;
+        2) frac_part="${frac_part}0" ;;
+        esac
+        [ -z "$int_part" ] && int_part=0
+        echo $((int_part * 1000 + frac_part))
+        ;;
+    *) echo $(($1 * 1000)) ;;
+    esac
+}
+
+valid_rate() {
+    # Reject empty, leading dot, non-numeric, or multi-dot input like "4.4.1".
+    case $1 in
+    '' | .* | *[!0-9.]*) return 1 ;;
+    esac
+    case ${1#*.} in
+    *[!0-9]* | '') return 1 ;;
+    esac
+    return 0
+}
+
+set_rate() {
+    # $1: rate in Hz, $2: human-readable label
+    pw-metadata -n settings 0 clock.force-rate "$1" >/dev/null 2>&1
+    gum style --foreground 46 -- "Sample rate set to: $2"
 }
 
 get_current_rate() {
-  echo "-------------------------------------------"
-  current_rate=$(pw-metadata -n settings | grep 'clock.force-rate' | cut -d "'" -f 4)
+    meta=$(pw-metadata -n settings)
+    force_rate=$(printf '%s\n' "$meta" | grep "key:'clock.force-rate'" | cut -d "'" -f 4)
+    rate=$(printf '%s\n' "$meta" | grep "key:'clock.rate'" | cut -d "'" -f 4)
+    allowed=$(printf '%s\n' "$meta" | grep "key:'clock.allowed-rates'" | cut -d "'" -f 4)
+    quantum=$(printf '%s\n' "$meta" | grep "key:'clock.quantum'" | cut -d "'" -f 4)
 
-  if [ "$current_rate" = "0" ]; then
-    current_rate=$(pw-metadata -n settings | grep 'clock.rate' | cut -d "'" -f 4)
-    echo "Current sample rate: ${current_rate} (default)"
-  else
-    echo "Current sample rate: ${current_rate}"
-  fi
-
-  echo "-------------------------------------------"
-  echo "Current PipeWire Settings:"
-
-  pw-metadata -n settings |
-    grep -E "key:'clock\.(rate|force-rate|allowed-rates|quantum)'" |
-    awk -F"'" '{
-      key = $2
-      val = $4
-      if (key == "clock.force-rate" && val == "0")
-        next
-      if (key == "clock.force-rate")
-        val = val " (current)"
-      printf "  %-19s: %s\n", key, val
-    }'
+    if [ -n "$force_rate" ] && [ "$force_rate" != "0" ]; then
+        printf '%-16s%s\n' "Active rate:" "${force_rate} (forced)"
+        printf '%-16s%s\n' "Default rate:" "$rate"
+    else
+        printf '%-16s%s\n' "Active rate:" "auto (default ${rate})"
+    fi
+    printf '%-16s%s\n' "Allowed rates:" "$allowed"
+    printf '%-16s%s\n' "Quantum:" "$quantum"
 }
 
-get_current_rate
+# After any action the main loop redraws the menu, and the status panel
+# above always reflects the latest state - no separate confirmation screen.
+main_menu() {
+    clear_screen
+    header "pwrate - PipeWire Sample Rate Manager"
+    get_current_rate
+    gum style --foreground 240 -- "-------------------------------------------"
+    # Assign gum's result to a global so this function's informational
+    # output (above) is not swallowed by command substitution by callers.
+    MAIN_CHOICE=$(gum choose --height 11 \
+        "Set custom sample rate" \
+        "Set sample rate to 44.1kHz" \
+        "Set sample rate to 48kHz" \
+        "Set sample rate to 96kHz" \
+        "Set sample rate to 192kHz" \
+        "Set sample rate to 384kHz" \
+        "Reset sample rate to default" \
+        "Show pactl info" \
+        "Show current PipeWire processes" \
+        "Exit") || exit 0
+}
 
-options_prompt() {
-    echo "-------------------------------------------"
-    echo "Options:"
-    echo "1. Back to main menu"
-    echo "2. Show current settings"
-    echo "3. Exit"
-    echo ""
-    read -p "Choose an option: " custom_option || exit 0
-    case $custom_option in
-      1)
+while true; do
+    main_menu
+
+    case $MAIN_CHOICE in
+    "Set custom sample rate")
         clear_screen
-        echo "-------------------------------------------"
-        get_current_rate
-        return 0
+        header "Set custom sample rate"
+        khz=$(gum input --header "Enter custom sample rate in kHz" --placeholder "e.g. 48 or 44.1") || exit 0
+        if valid_rate "$khz"; then
+            hz=$(khz_to_hz "$khz")
+            set_rate "$hz" "${khz}kHz"
+        else
+            gum style --foreground 196 -- "Invalid rate: $khz"
+        fi
         ;;
-      2)
-        clear_screen
-        get_current_rate
+    "Set sample rate to 44.1kHz") set_rate 44100 "44.1kHz" ;;
+    "Set sample rate to 48kHz") set_rate 48000 "48kHz" ;;
+    "Set sample rate to 96kHz") set_rate 96000 "96kHz" ;;
+    "Set sample rate to 192kHz") set_rate 192000 "192kHz" ;;
+    "Set sample rate to 384kHz") set_rate 384000 "384kHz" ;;
+    "Reset sample rate to default") set_rate 0 "default" ;;
+    "Show pactl info")
+        echo "PulseAudio Server Info"
+        {
+            pactl info
+            echo
+            pactl stat
+        } | gum pager
         ;;
-      3)
+    "Show current PipeWire processes")
+        pw-top
+        ;;
+    "Exit")
         exit 0
         ;;
-      *)
-        echo "Invalid option"
-        return 1
+    *)
+        gum style --foreground 196 -- "Invalid option"
+        exit 1
         ;;
     esac
-}
-while true; do
-  echo "-------------------------------------------"
-  echo "Options:"
-  echo "1. Set custom sample rate"
-  echo "2. Set sample rate to 44.1khz"
-  echo "3. Set sample rate to 48khz"
-  echo "4. Set sample rate to 96khz"
-  echo "5. Set sample rate to 192khz"
-  echo "6. Set sample rate to 384khz"
-  echo "7. Reset sample rate to default"
-  echo "8. Show current settings"
-  echo "9. Show pactl info"
-  echo "10. Show current PipeWire processes"
-  echo ""
-  read -p "Choose an option: " option || exit 0
-  clear_screen
-
-  case $option in
-    1)
-      echo "-------------------------------------------"
-      read -p "Enter custom sample rate in khz: " custom_rate_khz || exit 0
-      custom_rate=$(echo "$custom_rate_khz * 1000" | bc)
-      pw-metadata -n settings 0 clock.force-rate "$custom_rate" > /dev/null 2>&1
-      echo "Sample rate set to: ${custom_rate_khz}khz"
-      while true; do
-        if options_prompt; then
-          break
-        fi
-      done
-      ;;
-    2)
-      echo "-------------------------------------------"
-      pw-metadata -n settings 0 clock.force-rate 44100 > /dev/null 2>&1
-      echo "Sample rate set to 44.1khz"
-      while true; do
-        if options_prompt; then
-          break
-        fi
-      done
-      ;;
-    3)
-      echo "-------------------------------------------"
-      pw-metadata -n settings 0 clock.force-rate 48000 > /dev/null 2>&1
-      echo "Sample rate set to 48khz"
-        while true; do
-        if options_prompt; then
-          break
-        fi
-      done
-      ;;
-    4)
-      echo "-------------------------------------------"
-      pw-metadata -n settings 0 clock.force-rate 96000 > /dev/null 2>&1
-      echo "Sample rate set to 96khz"
-      while true; do
-        if options_prompt; then
-          break
-        fi
-      done
-      ;;
-    5)
-      echo "-------------------------------------------"
-          pw-metadata -n settings 0 clock.force-rate 192000 > /dev/null 2>&1
-      echo "Sample rate set to 192khz"
-      while true; do
-        if options_prompt; then
-          break
-        fi
-      done
-      ;;
-    6)
-      echo "-------------------------------------------"
-      pw-metadata -n settings 0 clock.force-rate 384000 > /dev/null 2>&1
-      echo "Sample rate set to 384khz"
-      while true; do
-        if options_prompt; then
-          break
-        fi
-      done
-      ;;
-    7)
-      echo "-------------------------------------------"
-      pw-metadata -n settings 0 clock.force-rate 0 > /dev/null 2>&1
-      echo "Sample rate reset to default"
-      while true; do
-        if options_prompt; then
-          break
-        fi
-      done
-      ;;
-    8)
-      get_current_rate
-      ;;
-    9)
-      echo "-------------------------------------------"
-      echo "PulseAudio Server Info"
-      echo "-------------------------------------------"
-      pactl info
-      pactl stat
-      ;;
-    10)
-      pw-top
-      ;;
-    *)
-      echo "Invalid option"
-      exit 1
-      ;;
-  esac
 done
