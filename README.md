@@ -5,7 +5,7 @@ This script provides a simple command-line interface to manage the sample rate o
 ## Requirements
 
 * **Linux:** This script is designed for Linux systems. It may not work on other operating systems.
-* **PipeWire:** This script requires PipeWire to be installed and running.
+* [**PipeWire:**](https://pipewire.org/) This script requires PipeWire to be installed and running.
 * **`gum`:** Charm's interactive CLI tool for the arrow-key menus and styled prompts. `install.sh` installs it automatically via your package manager; manual instructions are in [charmbracelet/gum](https://github.com/charmbracelet/gum#installation).
 
 ## Installation
